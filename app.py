@@ -13,7 +13,7 @@ def index():
     return render_template('index.html')
 
 
-# Routes for hotels and search removed as requested
+# Routes for hotels 
 
 
 @app.route('/api/hotels')
