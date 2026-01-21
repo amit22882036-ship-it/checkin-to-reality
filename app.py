@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from database import (get_stats, get_filtered_hotels, get_cities,
-                      get_hotel_markers_data)
+                      get_hotel_markers_data, get_all_hotels, search_hotels)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
@@ -46,10 +46,11 @@ def about():
     return render_template('about.html')
 
 
+
 @app.route('/dashboard')
-def dashboard():
-    """Hotel booking dashboard with map and filters"""
-    return render_template('dashboard.html')
+def dashboard_enhanced():
+    """Enhanced hotel dashboard with improved UI and more filters"""
+    return render_template('dashboard_enhanced.html')
 
 
 @app.route('/api/hotels/filtered', methods=['POST'])
@@ -76,10 +77,15 @@ def api_filtered_hotels():
         if filters.get('max_distance') is not None:
             parsed_filters['max_distance'] = float(filters['max_distance'])
 
+        if filters.get('min_reviews') is not None:
+            parsed_filters['min_reviews'] = int(filters['min_reviews'])
+
         if filters.get('amenities'):
             parsed_filters['amenities'] = filters['amenities']
 
-        parsed_filters['limit'] = filters.get('limit', 1000)
+        # Only add limit if explicitly requested
+        if filters.get('limit'):
+            parsed_filters['limit'] = filters['limit']
 
         hotels = get_filtered_hotels(parsed_filters)
         return jsonify([dict(hotel) for hotel in hotels])

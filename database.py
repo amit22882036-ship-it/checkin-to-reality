@@ -99,23 +99,31 @@ def get_filtered_hotels(filters=None):
 
         # City filter
         if filters.get('city'):
-            where_conditions.append('city = %s')
+            where_conditions.append('"city" = %s')
             params.append(filters['city'])
 
-        # Review score filter (cast text to numeric, handle nulls and invalid values)
+        # Review score filter - try to cast, skip invalid
         if filters.get('review_min') is not None:
             where_conditions.append('''review_score IS NOT NULL
                                        AND review_score != ''
-                                       AND review_score ~ '^[0-9]+(\\.[0-9]+)?$'
+                                       AND review_score ~ '^[0-9]'
                                        AND CAST(review_score AS NUMERIC) >= %s''')
             params.append(filters['review_min'])
 
         if filters.get('review_max') is not None:
             where_conditions.append('''review_score IS NOT NULL
                                        AND review_score != ''
-                                       AND review_score ~ '^[0-9]+(\\.[0-9]+)?$'
+                                       AND review_score ~ '^[0-9]'
                                        AND CAST(review_score AS NUMERIC) <= %s''')
             params.append(filters['review_max'])
+
+        # Minimum number of reviews filter
+        if filters.get('min_reviews') is not None:
+            where_conditions.append('''number_of_reviews IS NOT NULL
+                                       AND number_of_reviews != ''
+                                       AND number_of_reviews ~ '^[0-9]'
+                                       AND CAST(CAST(number_of_reviews AS NUMERIC) AS INTEGER) >= %s''')
+            params.append(filters['min_reviews'])
 
         # Gap score categories filter
         if filters.get('gap_categories'):
@@ -123,11 +131,11 @@ def get_filtered_hotels(filters=None):
             where_conditions.append(f'gap_category IN ({placeholders})')
             params.extend(filters['gap_categories'])
 
-        # Distance filter (cast text to numeric, handle nulls and invalid values)
+        # Distance filter - simplified
         if filters.get('max_distance') is not None:
             where_conditions.append('''distance_from_center_km IS NOT NULL
                                        AND distance_from_center_km != ''
-                                       AND distance_from_center_km ~ '^[0-9]+(\\.[0-9]+)?$'
+                                       AND distance_from_center_km ~ '^[0-9]'
                                        AND CAST(distance_from_center_km AS NUMERIC) <= %s''')
             params.append(filters['max_distance'])
 
@@ -148,14 +156,15 @@ def get_filtered_hotels(filters=None):
                    risk_level, amenities_count, url
                    FROM hotels"""
 
-        # Always filter out hotels without valid coordinates
+        # Always filter out hotels without valid coordinates - simplified check
         base_conditions = [
             "lat IS NOT NULL",
             "lon IS NOT NULL",
-            "lat ~ '^-?[0-9]+(\\.[0-9]+)?$'",  # Valid numeric latitude
-            "lon ~ '^-?[0-9]+(\\.[0-9]+)?$'",  # Valid numeric longitude
-            "CAST(lat AS NUMERIC) BETWEEN -90 AND 90",  # Valid latitude range
-            "CAST(lon AS NUMERIC) BETWEEN -180 AND 180"  # Valid longitude range
+            "lat != ''",
+            "lon != ''",
+            # Only check if they can be cast to numeric and are in valid range
+            "lat ~ '^-?[0-9]'",  # Starts with optional minus and digit
+            "lon ~ '^-?[0-9]'"   # Starts with optional minus and digit
         ]
 
         if where_conditions:
@@ -165,7 +174,7 @@ def get_filtered_hotels(filters=None):
 
         query += " ORDER BY review_score DESC"
 
-        # Add limit if specified
+        # No default limit - only add if explicitly requested
         if filters.get('limit'):
             query += " LIMIT %s"
             params.append(filters['limit'])
@@ -178,16 +187,25 @@ def get_cities():
     """Get list of unique valid cities"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        # Just get the main valid cities we know exist in the database
+        # Get all cities with at least 10 hotels, excluding obvious bad data
         cursor.execute("""
             SELECT DISTINCT city, COUNT(*) as count
             FROM hotels
-            WHERE city IN ('Amsterdam', 'Bangkok', 'Dubai', 'Eilat', 'Haifa',
-                          'London', 'New York', 'Rome', 'Tel Aviv', 'Tokyo')
+            WHERE city IS NOT NULL
+            AND city != ''
+            AND LENGTH(city) >= 3  -- Cities should have at least 3 characters
+            AND LENGTH(city) < 50
+            AND city NOT LIKE '%|||%'
+            AND city NOT LIKE '%.%'
+            AND city NOT LIKE '%,%'
+            AND city NOT LIKE '%!%'
+            AND city ~ '^[A-Za-z]'  -- Cities should start with a letter
+            AND city !~ '^[0-9]+$'  -- Exclude purely numeric entries
             GROUP BY city
-            ORDER BY city
+            HAVING COUNT(*) >= 10
+            ORDER BY COUNT(*) DESC, city
         """)
-        return [row['city'] for row in cursor.fetchall()]
+        return [row['city'] for row in cursor.fetchall() if row['city']]
 
 
 def get_hotel_markers_data():
@@ -203,9 +221,8 @@ def get_hotel_markers_data():
                    risk_level, amenities_count, url
             FROM hotels
             WHERE lat IS NOT NULL AND lon IS NOT NULL
-            AND lat ~ '^-?[0-9]+(\\.[0-9]+)?$'  -- Valid numeric latitude
-            AND lon ~ '^-?[0-9]+(\\.[0-9]+)?$'  -- Valid numeric longitude
-            AND CAST(lat AS NUMERIC) BETWEEN -90 AND 90  -- Valid latitude range
-            AND CAST(lon AS NUMERIC) BETWEEN -180 AND 180  -- Valid longitude range
+            AND lat != '' AND lon != ''
+            AND lat ~ '^-?[0-9]'  -- Starts with optional minus and digit
+            AND lon ~ '^-?[0-9]'  -- Starts with optional minus and digit
         """)
         return cursor.fetchall()
