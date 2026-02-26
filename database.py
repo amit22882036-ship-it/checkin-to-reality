@@ -1,24 +1,22 @@
 """
 PostgreSQL database helper functions
 """
+import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 
-# PostgreSQL connection parameters
-DB_CONFIG = {
-    'dbname': 'hotel_webapp',
-    'user': 'postgres',
-    'password': '456456dekel',  # Change this
-    'host': 'localhost',
-    'port': 5432
-}
-
+# Get the database URL from environment (Render), or use local as fallback
+DATABASE_URL = os.getenv(
+    'DATABASE_URL',
+    'postgresql://postgres:456456dekel@localhost:5432/hotel_webapp'
+)
 
 @contextmanager
 def get_db_connection():
     """Context manager for database connections"""
-    conn = psycopg2.connect(**DB_CONFIG, cursor_factory=RealDictCursor)
+    # Connect using the URL string
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     try:
         yield conn
     finally:
