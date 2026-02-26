@@ -54,7 +54,10 @@ def init_database():
 
         for row in reader:
             placeholders = ', '.join(['%s' for _ in headers])
-            insert_sql = f"INSERT INTO hotels ({', '.join([f'\"{h}\"' for h in headers])}) VALUES ({placeholders})"
+            # סידרנו את השורה הבעייתית לכאן:
+            formatted_headers = ', '.join([f'"{h}"' for h in headers])
+            insert_sql = f"INSERT INTO hotels ({formatted_headers}) VALUES ({placeholders})"
+
             cursor.execute(insert_sql, [row[h] for h in headers])
             row_count += 1
 
